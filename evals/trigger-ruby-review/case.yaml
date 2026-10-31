@@ -1,0 +1,36 @@
+schema_version: "1.0"
+name: trigger-ruby-review
+description: A review request about a Ruby diff has to reach the skill.
+tags: [trigger, positive, r2]
+runs: 3
+execution:
+  prompt: |
+    Review this before I put it up.
+
+    ```ruby
+    class WorkerNameFormatter
+      def initialize(worker)
+        @worker = worker
+      end
+
+      # Returns the formatted name
+      def format
+        "#{@worker.first_name} #{@worker.last_name}"
+      end
+    end
+
+    class WorkerNameFormatterFactory
+      def self.build(worker)
+        WorkerNameFormatter.new(worker)
+      end
+    end
+    ```
+  max_turns: 6
+  allowed_tools: [Skill]
+graders:
+  - type: tool_used
+    name: skill-fired
+    tool: Skill
+    input_match: ruby-plainspoken
+    min: 1
+expected_outcome: The agent loads the Ruby Plainspoken skill before answering.

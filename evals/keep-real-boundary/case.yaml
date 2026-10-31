@@ -1,0 +1,55 @@
+schema_version: "1.0"
+name: keep-real-boundary
+description: An object that translates an external system and isolates its failures must survive a simplification pass, even with one caller.
+tags: [behaviour, objects, r6]
+runs: 3
+execution:
+  prompt: |
+    Someone said this file is over-engineered because only one place uses it.
+    Should it go? Give me your answer and the code you would keep.
+
+    ```ruby
+    class PaymentGateway
+      Unavailable = Class.new(StandardError)
+
+      def charge(customer_id:, amount_cents:, currency:)
+        response = Stripe::Charge.create(customer: customer_id, amount: amount_cents, currency: currency)
+        Receipt.new(reference: response.id, charged_at: Time.zone.at(response.created))
+      rescue Stripe::APIConnectionError => e
+        raise Unavailable, e.message
+      end
+    end
+
+    # the only caller
+    class CheckoutsController < ApplicationController
+      def create
+        receipt = PaymentGateway.new.charge(
+          customer_id: current_user.stripe_id,
+          amount_cents: basket.total_cents,
+          currency: "gbp"
+        )
+        render json: { reference: receipt.reference }
+      rescue PaymentGateway::Unavailable
+        head :service_unavailable
+      end
+    end
+    ```
+  max_turns: 8
+  allowed_tools: [Skill]
+graders:
+  - type: llm
+    name: keeps-the-boundary
+    weight: 3
+    criteria: |
+      The answer keeps PaymentGateway as its own object and says why: it is the
+      only place that knows about Stripe, it turns a Stripe error into an error
+      of this application's own, and it converts the response into the
+      application's own Receipt. Having one caller today is explicitly not
+      treated as a reason to remove it. The answer does NOT propose inlining
+      the Stripe call into the controller.
+  - type: regex
+    name: no-stripe-in-controller
+    weight: 1
+    match: not_contains
+    pattern: 'def create[\s\S]{0,400}Stripe::Charge'
+expected_outcome: The gateway object stays, because it is an external boundary with its own failure translation.

@@ -1,0 +1,60 @@
+schema_version: "1.0"
+name: keep-required-positional
+description: A method with one obvious input, or one an existing interface calls positionally, must stay positional.
+tags: [behaviour, methods, r11]
+runs: 3
+execution:
+  prompt: |
+    Our new convention is keyword arguments everywhere. Apply it to this file.
+
+    ```ruby
+    class ShiftSchedule
+      include Enumerable
+
+      def initialize(shifts)
+        @shifts = shifts
+      end
+
+      def each(&block)
+        @shifts.each(&block)
+      end
+
+      def <=>(other)
+        length <=> other.length
+      end
+
+      def include?(shift)
+        @shifts.include?(shift)
+      end
+    end
+
+    class SendReminderJob < ApplicationJob
+      def perform(shift_id)
+        # ...
+      end
+    end
+    ```
+  max_turns: 8
+  allowed_tools: [Skill]
+graders:
+  - type: llm
+    name: keeps-positional-where-required
+    weight: 3
+    criteria: |
+      The answer keeps each, <=>, include? and perform with their positional
+      arguments and explains that a blanket keyword rule cannot apply here:
+      each and <=> are called positionally by Enumerable and Comparable,
+      perform is called positionally by Active Job, and include? has one obvious
+      input. The answer does NOT rewrite any of these four signatures to use
+      keywords.
+  - type: regex
+    name: each-unchanged
+    weight: 1
+    match: not_contains
+    pattern: 'def each\(\s*(block|shift|shifts):'
+  - type: regex
+    name: perform-unchanged
+    weight: 1
+    match: not_contains
+    pattern: 'def perform\(\s*shift_id:'
+expected_outcome: The framework-called and single-input methods keep their positional signatures.

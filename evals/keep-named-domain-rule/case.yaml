@@ -1,0 +1,44 @@
+schema_version: "1.0"
+name: keep-named-domain-rule
+description: A one-line predicate whose name states a domain rule must be kept, even with one caller.
+tags: [behaviour, methods, r7]
+runs: 3
+execution:
+  prompt: |
+    Our style checker complains that this class has too many methods for its
+    length. Make it shorter.
+
+    ```ruby
+    class Shift
+      def initialize(published:, starts_at:, cancelled:)
+        @published = published
+        @starts_at = starts_at
+        @cancelled = cancelled
+      end
+
+      def bookable?
+        @published && @starts_at > Time.current + (24 * 60 * 60) && !@cancelled
+      end
+
+      def label
+        bookable? ? "Open for booking" : "Not available"
+      end
+    end
+    ```
+  max_turns: 8
+  allowed_tools: [Skill]
+graders:
+  - type: llm
+    name: keeps-the-rule
+    weight: 3
+    criteria: |
+      The answer keeps a named `bookable?` predicate and says why: the name
+      states a business rule (published, far enough ahead, not cancelled) that
+      a reader cannot recover from the three conditions, and the rule can change
+      in one place. The answer does NOT inline the three conditions into
+      `label` just to reduce the method count.
+  - type: regex
+    name: predicate-kept
+    weight: 1
+    pattern: 'def bookable\?'
+expected_outcome: bookable? is kept because its name carries the rule.

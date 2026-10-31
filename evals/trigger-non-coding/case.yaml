@@ -1,0 +1,18 @@
+schema_version: "1.0"
+name: trigger-non-coding
+description: Work with no code in it must not reach the skill.
+tags: [trigger, negative, r2]
+runs: 3
+execution:
+  prompt: |
+    Draft a three-line message for our team channel telling everyone that
+    Tuesday's planning session has moved to Thursday at 10.
+  max_turns: 6
+  allowed_tools: [Skill]
+graders:
+  - type: tool_used
+    name: skill-did-not-fire
+    tool: Skill
+    input_match: ruby-plainspoken
+    max: 0
+expected_outcome: The agent answers without loading the Ruby Plainspoken skill.

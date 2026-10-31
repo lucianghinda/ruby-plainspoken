@@ -1,0 +1,53 @@
+schema_version: "1.0"
+name: rails-facility-over-new-layer
+description: Rails already provides background work with retries. The change has to use it rather than add a queue layer or a gem.
+tags: [fixture, rails, r4, r13]
+runs: 2
+execution:
+  prompt: |
+    When a shift is cancelled, email every booked worker to tell them. The mail
+    server goes down from time to time, so it has to be retried a few times
+    before it gives up, and cancelling the shift must not fail because the mail
+    server is unreachable.
+
+    This app is not bootable, so do not try to run it — make the change and
+    tell me what you changed and why.
+  max_turns: 30
+  timeout_seconds: 600
+  allowed_tools: [Read, Glob, Grep, Edit, Write, Bash, Skill]
+context:
+  scaffold_script: ./scaffold.sh
+graders:
+  - type: regex
+    name: uses-active-job-retries
+    weight: 3
+    target:
+      source: file
+      path: app/jobs/notify_worker_job.rb
+    pattern: 'retry_on'
+  - type: regex
+    name: gemfile-unchanged
+    weight: 3
+    target:
+      source: file
+      path: Gemfile
+    match: not_contains
+    pattern: 'gem "(sidekiq|resque|retriable|shoryuken|delayed_job)"'
+  - type: file_exists
+    name: no-queue-wrapper
+    weight: 2
+    path: app/services/job_dispatcher.rb
+    exists: false
+  - type: llm
+    name: rails-facility-not-a-new-layer
+    weight: 3
+    criteria: |
+      The change uses Active Job — enqueueing the existing NotifyWorkerJob (or
+      one like it) with `retry_on` for the mail failure — and says that Rails
+      already covers background work with retries, so no new queue wrapper,
+      dispatcher, retry helper or gem was needed. The answer must not add a
+      class whose job is to wrap or dispatch jobs, must not add a retry loop of
+      its own, and must not add a gem. It must also keep the cancellation itself
+      from failing when mail delivery fails, by enqueueing rather than
+      delivering inline.
+expected_outcome: Active Job with retry_on, no new layer, no new gem, delivery moved off the cancellation path.

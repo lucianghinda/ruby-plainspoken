@@ -1,0 +1,70 @@
+schema_version: "1.0"
+name: follow-service-pattern
+description: A new service must match the construction, public method, return value, failure behaviour, naming and test layout of the services already there.
+tags: [fixture, pattern, r3, r5, r15]
+runs: 2
+context:
+  scaffold_script: ./scaffold.sh
+execution:
+  prompt: |
+    Add the ability to extend a booking: a manager gives a booking a new end
+    time, and it must not push the booking into another booking for the same
+    worker, and it must not work on a cancelled booking.
+
+    Then run the tests.
+  max_turns: 30
+  timeout_seconds: 600
+  allowed_tools: [Read, Glob, Grep, Edit, Write, Bash, Skill]
+graders:
+  - type: regex
+    name: suite-passes
+    weight: 3
+    target: trace
+    pattern: '0 failures, 0 errors'
+  - type: file_exists
+    name: service-in-the-usual-place
+    weight: 2
+    path: lib/services/extend_booking.rb
+  - type: regex
+    name: keyword-initialize
+    weight: 1
+    target:
+      source: file
+      path: lib/services/extend_booking.rb
+    pattern: 'def initialize\([a-z_]+:'
+  - type: regex
+    name: one-public-call
+    weight: 1
+    target:
+      source: file
+      path: lib/services/extend_booking.rb
+    pattern: 'def call'
+  - type: regex
+    name: returns-the-result-value
+    weight: 1
+    target:
+      source: file
+      path: lib/services/extend_booking.rb
+    pattern: 'Result'
+  - type: regex
+    name: raises-a-booking-error
+    weight: 1
+    target:
+      source: file
+      path: lib/services/extend_booking.rb
+    pattern: 'raise Booking(Overlaps|AlreadyCancelled)'
+  - type: file_exists
+    name: test-in-the-usual-place
+    weight: 2
+    path: test/extend_booking_test.rb
+  - type: llm
+    name: matches-the-pattern
+    weight: 2
+    criteria: |
+      The new service follows the four services already in lib/services: it
+      takes keyword arguments in initialize, exposes one public `call`, returns
+      a Result value carrying the booking and its hours, and raises a subclass
+      of BookingError when a rule is broken. Its test file uses Minitest and the
+      BookingBuilder helper from test/test_helper.rb, like the existing test
+      files. No second test framework is added.
+expected_outcome: A new service and test that match the existing pattern in every one of those five respects.

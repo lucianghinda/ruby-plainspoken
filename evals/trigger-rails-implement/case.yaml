@@ -1,0 +1,19 @@
+schema_version: "1.0"
+name: trigger-rails-implement
+description: A Rails feature request has to reach the skill.
+tags: [trigger, positive, r2]
+runs: 3
+execution:
+  prompt: |
+    In our Rails app, when a shift is cancelled we need to email the worker in
+    the background, and retry a few times if the mail server is down. How
+    should I build that?
+  max_turns: 6
+  allowed_tools: [Skill]
+graders:
+  - type: tool_used
+    name: skill-fired
+    tool: Skill
+    input_match: ruby-plainspoken
+    min: 1
+expected_outcome: The agent loads the Ruby Plainspoken skill before answering.

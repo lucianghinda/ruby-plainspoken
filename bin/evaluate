@@ -1,0 +1,429 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "optparse"
+require "open3"
+require "fileutils"
+require "tmpdir"
+require "time"
+require "yaml"
+require_relative "codex_eval"
+
+REPO = File.expand_path("..", __dir__)
+PLUGIN_NAME = "ruby-plainspoken"
+
+Options = Struct.new(
+  :agents, :case_glob, :tags, :runs, :model, :judge_model,
+  :threshold, :output, :max_cost_usd, :dry_run,
+  :codex_model, :codex_install_only, :concurrency,
+  keyword_init: true
+)
+
+ReleaseResult = Data.define(:verdict, :reasons) do
+  def self.decide(trigger:, behaviour:, codex:, threshold:, codex_trigger: nil, codex_behaviour: nil)
+    passes = [["", trigger, behaviour], ["codex: ", codex_trigger, codex_behaviour]]
+
+    incomplete = passes.flat_map do |prefix, *reports|
+      reports.compact.flat_map { |report| report.incomplete_reasons.map { |reason| "#{prefix}#{reason}" } }
+    end
+    return new(verdict: :incomplete, reasons: incomplete) if incomplete.any?
+
+    reasons = passes.flat_map do |prefix, trigger_report, behaviour_report|
+      gate_reasons(trigger_report, behaviour_report, threshold).map { |reason| "#{prefix}#{reason}" }
+    end
+
+    if codex && !codex.passed
+      reasons.concat(codex.failures.map { |failure| "codex: #{failure}" })
+    end
+
+    return new(verdict: :fail, reasons:) if reasons.any?
+
+    new(verdict: :pass, reasons: [])
+  end
+
+  def self.gate_reasons(trigger, behaviour, threshold)
+    reasons = []
+
+    trigger&.cases&.each do |eval_case|
+      next if eval_case.pass_rate >= 1.0
+
+      reasons << "trigger case #{eval_case.name} did not behave as required in every run (pass rate #{eval_case.pass_rate})"
+    end
+
+    behaviour&.cases&.each do |eval_case|
+      next if eval_case.score >= threshold
+
+      reasons << "case #{eval_case.name} scored #{format('%.2f', eval_case.score)}, below the release threshold of #{threshold}"
+    end
+
+    measured = behaviour ? behaviour.cases.reject(&:guard) : []
+    if measured.any?
+      worse = measured.count { |eval_case| eval_case.delta.negative? }
+      better = measured.count { |eval_case| eval_case.delta.positive? }
+      mean_delta = measured.sum(&:delta) / measured.length.to_f
+      if mean_delta.negative?
+        reasons << "the plugin scored below the no-plugin baseline overall (mean delta #{format('%.2f', mean_delta)})"
+      elsif worse > better
+        reasons << "the plugin made #{worse} case(s) worse and only #{better} better"
+      end
+    end
+
+    reasons
+  end
+
+  def exit_code
+    case verdict
+    when :pass then 0
+    when :fail then 1
+    when :incomplete then 2
+    end
+  end
+end
+
+EvalCase = Data.define(:name, :score, :pass_rate, :score_without, :delta, :runs_requested, :runs_completed, :errors, :guard)
+
+# A guard case must still clear the score threshold, but its delta is not
+# counted: the model already passes it without the plugin.
+def guard_case_names(repo)
+  Dir.glob(File.join(repo, "evals", "*", "case.yaml")).filter_map do |path|
+    document = YAML.safe_load(File.read(path))
+    document["name"] if document.fetch("tags", []).include?("guard")
+  end
+end
+
+class ClaudeReport
+  attr_reader :cases, :claude_version, :cost_usd, :mean_delta, :ablation
+
+  def self.parse(path, runs_override: nil, guards: [])
+    document = JSON.parse(File.read(path))
+    raise ArgumentError, "unrecognised report schema version #{document['schemaVersion']}" unless document["schemaVersion"] == 1
+
+    new(document, runs_override:, guards:)
+  end
+
+  def initialize(document, runs_override: nil, guards: [])
+    @document = document
+    @guards = guards
+    @runs_override = runs_override
+    @claude_version = document["claudeVersion"]
+    @cost_usd = document["costUsd"]
+    @ablation = document.dig("suite", "ablation")
+    @mean_delta = document.dig("aggregates", "meanDelta") || 0
+    @cases = document.fetch("cases").map { |eval_case| build_case(eval_case) }
+  end
+
+  def incomplete_reasons
+    reasons = []
+    reasons << "the run stopped before every case finished" if @document["partial"]
+
+    @cases.each do |eval_case|
+      eval_case.errors.each { |error| reasons << "case #{eval_case.name} did not complete: #{error}" }
+      next if eval_case.runs_completed >= eval_case.runs_requested
+
+      reasons << "case #{eval_case.name} completed #{eval_case.runs_completed} of #{eval_case.runs_requested} requested runs"
+    end
+
+    reasons
+  end
+
+  def to_h
+    { claude_version: @claude_version, ablation: @ablation, cost_usd: @cost_usd, mean_delta: @mean_delta,
+      cases: @cases.map(&:to_h) }
+  end
+
+  private
+
+  def build_case(eval_case)
+    aggregates = eval_case["aggregates"] || {}
+    runs = (eval_case.dig("arms", "with") || []) + (eval_case.dig("arms", "without") || [])
+
+    EvalCase.new(
+      name: eval_case.fetch("name"),
+      score: aggregates["score"] || 0,
+      pass_rate: aggregates["passRate"] || 0,
+      score_without: aggregates["scoreWithout"],
+      delta: aggregates["delta"] || 0,
+      runs_requested: expected_runs(eval_case),
+      runs_completed: runs.count { |run| run["error"].to_s.empty? },
+      errors: runs.filter_map { |run| run["error"] unless run["error"].to_s.empty? }.uniq,
+      guard: @guards.include?(eval_case.fetch("name"))
+    )
+  end
+
+  def expected_runs(eval_case)
+    per_case = @runs_override || eval_case["runsPerCase"] || 1
+    arms = eval_case["arms"].keys.length
+
+    per_case * arms
+  end
+end
+
+CodexResult = Data.define(:passed, :checks, :failures) do
+  def to_h
+    { passed:, checks:, failures: }
+  end
+end
+
+class CodexInstallCheck
+  def initialize(repo:)
+    @repo = repo
+  end
+
+  def call
+    version = JSON.parse(File.read(File.join(@repo, ".codex-plugin", "plugin.json"))).fetch("version")
+    checks = {}
+    failures = []
+
+    Dir.mktmpdir("codex-home") do |home|
+      env = { "CODEX_HOME" => home }
+
+      added, error = run(env, "plugin", "marketplace", "add", @repo)
+      checks["marketplace added"] = added
+      failures << "codex plugin marketplace add failed: #{error}" unless added
+
+      if added
+        installed, error = run(env, "plugin", "add", "#{PLUGIN_NAME}@#{PLUGIN_NAME}")
+        checks["plugin installed"] = installed
+        failures << "codex plugin add failed: #{error}" unless installed
+
+        listing, = capture(env, "plugin", "list")
+        enabled = listing.include?("installed, enabled")
+        checks["plugin enabled"] = enabled
+        failures << "codex plugin list does not report the plugin as installed and enabled" unless enabled
+
+        reported_version = listing.include?(version)
+        checks["version #{version} reported"] = reported_version
+        failures << "codex plugin list does not report version #{version}" unless reported_version
+
+        skill = File.join(home, "plugins", "cache", PLUGIN_NAME, PLUGIN_NAME, version,
+                          "skills", PLUGIN_NAME, "SKILL.md")
+        skill_present = File.exist?(skill)
+        checks["skill present in the plugin cache"] = skill_present
+        failures << "the installed plugin has no skills/#{PLUGIN_NAME}/SKILL.md" unless skill_present
+
+        if skill_present
+          named = File.read(skill).include?("name: #{PLUGIN_NAME}")
+          checks["skill frontmatter names the skill"] = named
+          failures << "the installed SKILL.md frontmatter does not name #{PLUGIN_NAME}" unless named
+
+          reference = File.join(File.dirname(skill), "references", "ruby-and-rails.md")
+          reference_present = File.exist?(reference)
+          checks["reference present in the plugin cache"] = reference_present
+          failures << "the installed plugin has no references/ruby-and-rails.md" unless reference_present
+        end
+      end
+    end
+
+    CodexResult.new(passed: failures.empty?, checks:, failures:)
+  rescue Errno::ENOENT
+    CodexResult.new(passed: false, checks: {}, failures: ["the codex command is not on PATH"])
+  end
+
+  private
+
+  def run(env, *arguments)
+    _, error, status = Open3.capture3(env, "codex", *arguments)
+    [status.success?, error.strip]
+  end
+
+  def capture(env, *arguments)
+    output, error, = Open3.capture3(env, "codex", *arguments)
+    [output, error]
+  end
+end
+
+class ClaudeEvaluation
+  EARLY_ACCESS = "currently in early access"
+
+  FIXTURE_TOOLS = %w[Read Glob Grep Edit Write Bash].freeze
+  KIND_TAGS = %w[trigger behaviour fixture].freeze
+
+  def initialize(options:, output:)
+    @options = options
+    @output = output
+    @kinds = options.tags & KIND_TAGS
+    @extra_tags = options.tags - KIND_TAGS
+  end
+
+  def trigger_pass
+    return nil unless wanted?(%w[trigger])
+
+    run(
+      label: "trigger",
+      arguments: ["--tag", "trigger", "--ablation", "none"]
+    )
+  end
+
+  def behaviour_pass
+    kinds = @kinds.empty? ? %w[behaviour fixture] : @kinds & %w[behaviour fixture]
+    return nil if kinds.empty?
+
+    run(
+      label: "behaviour",
+      arguments: [*kinds.flat_map { |kind| ["--tag", kind] }, "--ablation", "with-without",
+                  "--scaffold", "--allow-tools", *FIXTURE_TOOLS]
+    )
+  end
+
+  private
+
+  def wanted?(kinds)
+    @kinds.empty? || @kinds.intersect?(kinds)
+  end
+
+  def run(label:, arguments:)
+    json_path = File.join(@output, "#{label}-report.json")
+    command = ["claude", "plugin", "eval", REPO, "--json", json_path, "--no-publish", *arguments]
+    command.push("--case", @options.case_glob) if @options.case_glob
+    @extra_tags.each { |tag| command.push("--tag", tag) }
+    command.push("--runs", @options.runs.to_s) if @options.runs
+    command.push("--concurrency", @options.concurrency.to_s) if @options.concurrency
+    command.push("--model", @options.model) if @options.model
+    command.push("--judge-model", @options.judge_model) if @options.judge_model
+    command.push("--max-cost-usd", @options.max_cost_usd.to_s) if @options.max_cost_usd
+
+    if @options.dry_run
+      warn "would run: #{command.join(' ')}"
+      return nil
+    end
+
+    warn "running: #{command.join(' ')}"
+    output, error, status = Open3.capture3(*command)
+    combined = "#{output}#{error}"
+
+    if combined.include?(EARLY_ACCESS)
+      abort <<~MESSAGE
+        `claude plugin eval` is not enabled for this account, so the release
+        evaluations cannot run. It is in early access and enabled per
+        organization. On a machine that cannot receive that rollout, Claude Code
+        documents `CLAUDE_CODE_WALNUT_SPIRE=1` as the enablement variable; set it
+        in your shell or in ~/.claude/settings.json under `env`. If you are
+        gated off, ask your Anthropic contact.
+      MESSAGE
+    end
+
+    unless File.exist?(json_path)
+      abort "claude plugin eval wrote no report to #{json_path} (exit #{status.exitstatus}): #{combined.lines.last(5).join}"
+    end
+
+    ClaudeReport.parse(json_path, runs_override: @options.runs, guards: guard_case_names(REPO))
+  end
+end
+
+def parse_options(argv)
+  options = Options.new(
+    agents: %w[claude codex], tags: [], threshold: 0.7, dry_run: false,
+    output: File.join(REPO, "tmp", "evaluations", "#{Time.now.utc.strftime("%Y%m%dT%H%M%SZ")}-#{Process.pid}")
+  )
+
+  OptionParser.new do |parser|
+    parser.banner = "usage: bin/evaluate [options]"
+    parser.on("--agent LIST", "claude, codex, or both (default: claude,codex)") { |value| options.agents = value.split(",").map(&:strip) }
+    parser.on("--case GLOB", "only cases whose name matches this glob") { |value| options.case_glob = value }
+    parser.on("--tag TAG", "only cases carrying this tag (repeatable)") { |value| options.tags << value }
+    parser.on("--runs N", Integer, "override the runs each case asks for") { |value| options.runs = value }
+    parser.on("--model NAME", "model under test on claude") { |value| options.model = value }
+    parser.on("--codex-model NAME", "model under test on codex") { |value| options.codex_model = value }
+    parser.on("--codex-install-only", "on codex, check install and skill discovery only, no model calls") { options.codex_install_only = true }
+    parser.on("--concurrency N", Integer, "agent runs at once (default 1)") { |value| options.concurrency = value }
+    parser.on("--judge-model NAME", "model that scores the llm graders") { |value| options.judge_model = value }
+    parser.on("--threshold X", Float, "lowest case score a release may publish (default 0.7)") { |value| options.threshold = value }
+    parser.on("--max-cost-usd USD", Float, "stop and report partial results at this spend") { |value| options.max_cost_usd = value }
+    parser.on("--output DIR", "where the report goes") { |value| options.output = value }
+    parser.on("--dry-run", "print the commands instead of running them") { options.dry_run = true }
+    parser.on("-h", "--help") { puts parser; exit 0 }
+  end.parse!(argv)
+
+  unrecognised = options.agents - %w[claude codex]
+  abort "unknown agent(s): #{unrecognised.join(', ')}" if unrecognised.any?
+
+  options
+end
+
+def report_lines(result, trigger, behaviour, codex, codex_trigger: nil, codex_behaviour: nil)
+  lines = []
+
+  [["trigger", trigger], ["behaviour", behaviour], ["codex trigger", codex_trigger], ["codex behaviour", codex_behaviour]].each do |label, report|
+    next unless report
+
+    measured = report.cases.reject(&:guard)
+    guards = report.cases.length - measured.length
+    mean = measured.empty? ? 0 : measured.sum(&:delta) / measured.length.to_f
+    guard_note = guards.positive? ? " (#{guards} guard case(s) not counted)" : ""
+    lines << "#{label}: #{report.cases.length} case(s), mean delta #{format('%.2f', mean)}#{guard_note}, #{report.cost_usd ? "$#{format('%.2f', report.cost_usd)}" : 'cost not reported'}"
+    report.cases.sort_by(&:name).each do |eval_case|
+      lines << format("  %-40s score %.2f  pass %.0f%%  delta %+.2f%s", eval_case.name, eval_case.score, eval_case.pass_rate * 100, eval_case.delta, eval_case.guard ? "  (guard)" : "")
+    end
+  end
+
+  if codex
+    lines << "codex: #{codex.passed ? 'install and skill discovery pass' : 'FAILED'}"
+    codex.checks.each { |name, ok| lines << "  #{ok ? '✔' : '✘'} #{name}" }
+  end
+
+  lines << ""
+  lines << "release: #{result.verdict}"
+  result.reasons.each { |reason| lines << "  - #{reason}" }
+  lines
+end
+
+def main(argv)
+  options = parse_options(argv)
+  FileUtils.mkdir_p(options.output)
+
+  trigger = nil
+  behaviour = nil
+  codex = nil
+
+  if options.agents.include?("claude")
+    evaluation = ClaudeEvaluation.new(options:, output: options.output)
+    trigger = evaluation.trigger_pass
+    behaviour = evaluation.behaviour_pass
+  end
+
+  codex_trigger = nil
+  codex_behaviour = nil
+
+  if options.agents.include?("codex")
+    codex = CodexInstallCheck.new(repo: REPO).call unless options.dry_run
+    if !options.codex_install_only && (codex.nil? || codex.passed)
+      codex_evaluation = CodexEval::Evaluation.new(options:, output: options.output, repo: REPO, plugin_name: PLUGIN_NAME)
+      codex_trigger = codex_evaluation.trigger_pass
+      codex_behaviour = codex_evaluation.behaviour_pass
+    end
+  end
+
+  if options.dry_run
+    warn "dry run: nothing was evaluated"
+    return 0
+  end
+
+  result = ReleaseResult.decide(trigger:, behaviour:, codex:, threshold: options.threshold, codex_trigger:, codex_behaviour:)
+
+  report = {
+    run: {
+      started_at: Time.now.utc.iso8601,
+      plugin_version: JSON.parse(File.read(File.join(REPO, ".claude-plugin", "plugin.json"))).fetch("version"),
+      plugin_revision: `git -C #{REPO} rev-parse --short HEAD 2>/dev/null`.strip,
+      claude_version: behaviour&.claude_version || trigger&.claude_version,
+      agents: options.agents,
+      threshold: options.threshold,
+      model: options.model
+    },
+    trigger: trigger&.to_h,
+    behaviour: behaviour&.to_h,
+    codex: codex&.to_h,
+    codex_trigger: codex_trigger&.to_h,
+    codex_behaviour: codex_behaviour&.to_h,
+    release: { result: result.verdict, reasons: result.reasons }
+  }
+
+  File.write(File.join(options.output, "report.json"), "#{JSON.pretty_generate(report)}\n")
+  puts report_lines(result, trigger, behaviour, codex, codex_trigger:, codex_behaviour:).join("\n")
+  puts "report: #{File.join(options.output, 'report.json')}"
+
+  result.exit_code
+end
+
+exit main(ARGV) if $PROGRAM_NAME == __FILE__

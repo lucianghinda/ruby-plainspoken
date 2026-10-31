@@ -1,0 +1,41 @@
+schema_version: "1.0"
+name: keep-domain-sorbet-alias
+description: A single-use Sorbet alias that gives a complex type a real domain name must be kept.
+tags: [behaviour, sorbet, r9]
+runs: 3
+execution:
+  prompt: |
+    A linter says this alias is used once and should go. Do you agree? Show me
+    the file you would keep.
+
+    ```ruby
+    # typed: strict
+    module Payroll
+      extend T::Sig
+
+      # Public: other teams call rate_table and pass this straight to
+      # Payroll::Engine.
+      RateTable = T.type_alias { T::Hash[Symbol, T::Array[T::Hash[Symbol, Numeric]]] }
+
+      sig { params(bands: RateTable).returns(Money) }
+      def self.total(bands)
+        Engine.new(bands).total
+      end
+    end
+    ```
+  max_turns: 8
+  allowed_tools: [Skill]
+graders:
+  - type: llm
+    name: alias-kept
+    weight: 3
+    criteria: |
+      The answer keeps the RateTable alias and says why: it gives a genuinely
+      complex nested type a domain name, and it is part of a contract other
+      callers already refer to, so inlining it would hide that name from every
+      signature. The answer does NOT delete the alias because it has one use.
+  - type: regex
+    name: alias-kept-in-code
+    weight: 1
+    pattern: 'RateTable'
+expected_outcome: The alias stays, because removing it would hide a named public contract.

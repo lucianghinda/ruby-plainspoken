@@ -1,0 +1,46 @@
+schema_version: "1.0"
+name: plain-object-for-real-responsibility
+description: A multi-step operation with its own inputs and failures has no natural model owner, so a named plain object is right — and a model callback is not.
+tags: [fixture, rails, objects, r6, r13]
+runs: 2
+context:
+  scaffold_script: ./scaffold.sh
+execution:
+  prompt: |
+    Booking a shift now has to do four things together: take the deposit
+    through the payment gateway, record a receipt, tell the worker, and tell the
+    venue. If the payment fails, none of it happens and the caller finds out.
+
+    This app is not bootable, so do not try to run it — make the change and
+    tell me what you changed and why.
+  max_turns: 30
+  timeout_seconds: 600
+  allowed_tools: [Read, Glob, Grep, Edit, Write, Bash, Skill]
+graders:
+  - type: regex
+    name: no-model-callback
+    weight: 3
+    target:
+      source: file
+      path: app/models/booking.rb
+    match: not_contains
+    pattern: 'after_(create|save|commit)'
+  - type: llm
+    name: named-object-following-the-house-pattern
+    weight: 3
+    criteria: |
+      The change puts the four steps in one plain Ruby object under
+      app/services, named after the operation it performs (something like
+      BookShift or ConfirmBookingWithDeposit — not Manager, Handler, Helper,
+      Service or Processor on its own), following the shape of the existing
+      app/services/publish_shift.rb: keyword arguments in initialize, one
+      public call, its own named error, and the writes inside a transaction.
+      The answer says why this is not a model callback: the work has its own
+      inputs and its own failure, and it must be visible to the caller. It does
+      not add an interface, a base class, a registry or a gem.
+  - type: regex
+    name: transaction-kept
+    weight: 2
+    target: last_message
+    pattern: 'transaction'
+expected_outcome: One named service object under app/services following publish_shift.rb, with no model callback.

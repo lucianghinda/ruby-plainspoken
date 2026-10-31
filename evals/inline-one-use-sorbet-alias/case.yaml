@@ -1,0 +1,40 @@
+schema_version: "1.0"
+name: inline-one-use-sorbet-alias
+description: A Sorbet type alias used once that only names a shape must be inlined.
+tags: [behaviour, sorbet, r9]
+runs: 3
+execution:
+  prompt: |
+    Tidy up the types in this file.
+
+    ```ruby
+    # typed: strict
+    class RowLabeller
+      extend T::Sig
+
+      Row = T.type_alias { T::Hash[Symbol, T.untyped] }
+
+      sig { params(row: Row).returns(String) }
+      def label(row)
+        "#{row[:code]} — #{row[:name]}"
+      end
+    end
+    ```
+  max_turns: 8
+  allowed_tools: [Skill]
+graders:
+  - type: llm
+    name: alias-inlined
+    weight: 3
+    criteria: |
+      The answer removes the Row type alias and writes
+      T::Hash[Symbol, T.untyped] directly in the signature, because the alias
+      has one use and its name adds no domain meaning that the type does not
+      already show. The answer does NOT keep the alias, and does NOT introduce
+      a new struct, Data value or class to replace it.
+  - type: regex
+    name: alias-gone
+    weight: 1
+    match: not_contains
+    pattern: 'Row = T\.type_alias'
+expected_outcome: The alias is gone and the type appears at its one use.

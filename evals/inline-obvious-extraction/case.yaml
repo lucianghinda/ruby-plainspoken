@@ -1,0 +1,57 @@
+schema_version: "1.0"
+name: inline-obvious-extraction
+description: A private method whose name only repeats its one-line body must be inlined.
+tags: [behaviour, methods, r7]
+runs: 3
+execution:
+  prompt: |
+    A reviewer told me this class is fine. I think it has too many methods.
+    What would you do?
+
+    ```ruby
+    class Payout
+      def initialize(amount_pence:, worker:)
+        @amount_pence = amount_pence
+        @worker = worker
+      end
+
+      def summary
+        return "nothing owed" unless positive_amount?
+
+        "#{full_name} is owed #{pounds}"
+      end
+
+      private
+
+      def positive_amount?
+        @amount_pence.positive?
+      end
+
+      def full_name
+        "#{@worker.first_name} #{@worker.last_name}"
+      end
+
+      def pounds
+        format("£%.2f", @amount_pence / 100.0)
+      end
+    end
+    ```
+  max_turns: 8
+  allowed_tools: [Skill]
+graders:
+  - type: llm
+    name: inlines-the-renames
+    weight: 3
+    criteria: |
+      The answer inlines positive_amount? and full_name into summary, because
+      each name only restates the expression it wraps and each has a single call
+      site. The answer does NOT add new methods or classes. It is acceptable
+      either to inline `pounds` or to keep it, since currency formatting is a
+      judgement call, but the answer must not claim that every one-line method
+      has to be kept.
+  - type: regex
+    name: predicate-inlined
+    weight: 1
+    match: not_contains
+    pattern: 'def positive_amount\?'
+expected_outcome: The two methods that only rename an expression are inlined.

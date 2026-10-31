@@ -1,0 +1,32 @@
+{
+  "name": "ruby-plainspoken",
+  "description": "Ruby and Rails design guidance for Codex. Reads the real code first, then picks the smallest change that fits the application: no class, wrapper, comment, type alias or dependency that has nothing to do, and no loss of validation, authorization, database integrity or tests.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Lucian Ghinda",
+    "url": "https://github.com/lucianghinda"
+  },
+  "homepage": "https://github.com/lucianghinda/ruby-plainspoken",
+  "repository": "https://github.com/lucianghinda/ruby-plainspoken",
+  "license": "MIT",
+  "keywords": [
+    "ruby",
+    "rails",
+    "simplicity",
+    "refactoring",
+    "code-review",
+    "yagni",
+    "sorbet",
+    "minitest",
+    "rspec"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Ruby Plainspoken",
+    "shortDescription": "Read the code, then write the smallest Ruby or Rails change that fits it",
+    "longDescription": "One skill for Ruby and Rails implementation, refactoring and review. It makes the agent trace the real flow and follow the application's existing pattern before it designs anything, and it rejects a new class, wrapper, comment, type alias or dependency that has no separate job. Validation, authorization, database integrity, transactions, security, accessibility, error handling and tests are never removed to make a change smaller.",
+    "developerName": "Lucian Ghinda",
+    "category": "Developer Tools",
+    "websiteURL": "https://github.com/lucianghinda/ruby-plainspoken"
+  }
+}

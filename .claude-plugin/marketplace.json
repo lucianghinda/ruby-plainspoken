@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "ruby-plainspoken",
+  "description": "One Ruby and Rails skill that reads the code before it designs, then writes the smallest change that fits the application.",
+  "owner": {
+    "name": "Lucian Ghinda",
+    "url": "https://github.com/lucianghinda"
+  },
+  "plugins": [
+    {
+      "name": "ruby-plainspoken",
+      "description": "Ruby and Rails design guidance: read the real flow, reuse what is there, add only objects that have a job, keep every required safety behaviour.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

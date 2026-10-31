@@ -1,0 +1,60 @@
+schema_version: "1.0"
+name: keep-knowledge-split
+description: Two objects that each know something the other does not must stay separate, even when they run in sequence for one import.
+tags: [behaviour, objects, r16, guard]
+runs: 3
+execution:
+  prompt: |
+    A teammate says two classes for one import is over-engineered and wants
+    one `OrderImport` class that reads the file and writes the rows. Is that
+    right?
+
+    ```ruby
+    class OrderCsv
+      def initialize(path)
+        @path = path
+      end
+
+      def each_order
+        CSV.foreach(@path, headers: true) do |row|
+          yield({ sku: row["sku"], quantity: row["qty"].to_i, ordered_on: Date.iso8601(row["date"]) })
+        end
+      end
+    end
+
+    class OrderWriter
+      def write(orders)
+        Order.transaction do
+          orders.each do |attrs|
+            next if Order.exists?(sku: attrs[:sku], ordered_on: attrs[:ordered_on])
+
+            Order.create!(attrs)
+          end
+        end
+      end
+    end
+
+    orders = []
+    OrderCsv.new(path).each_order { |attrs| orders << attrs }
+    OrderWriter.new.write(orders)
+    ```
+  max_turns: 8
+  allowed_tools: [Skill]
+graders:
+  - type: llm
+    name: keeps-both
+    weight: 3
+    criteria: |
+      Judge only the recommendation, not the reasons given for it. The answer
+      passes when it recommends keeping the file reading and the record
+      writing in separate places: two classes, or the reading in one class and
+      the writing on the Order model. A hedged "mostly no" still passes if the
+      recommendation is to keep them apart. Ignore any extra advice. The
+      answer fails when it recommends one class that both parses the CSV and
+      writes the records, or adds a coordinator object on top.
+  - type: regex
+    name: no-merged-class
+    weight: 1
+    match: not_contains
+    pattern: '\nclass [A-Z]\w*( < \w+)?\n(?:(?!\nend\b)[\s\S])*?CSV\.(?:(?!\nend\b)[\s\S])*?transaction'
+expected_outcome: Reading the file and writing the records stay apart, because each knows something the other does not.

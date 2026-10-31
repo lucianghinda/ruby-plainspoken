@@ -1,0 +1,42 @@
+schema_version: "1.0"
+name: keywords-for-confusable-inputs
+description: A public method with several confusable inputs and a boolean must take required keyword arguments.
+tags: [behaviour, methods, r11]
+runs: 3
+execution:
+  prompt: |
+    This is the public entry point of our scheduling code and people keep
+    getting the arguments wrong. What would you change about the signature?
+
+    ```ruby
+    class Scheduler
+      def schedule(worker, venue, start_time, end_time, notify)
+        # ...
+      end
+    end
+
+    Scheduler.new.schedule(worker, venue, monday_09, monday_17, true)
+    ```
+  max_turns: 8
+  allowed_tools: [Skill]
+graders:
+  - type: llm
+    name: required-keywords
+    weight: 3
+    criteria: |
+      The answer changes schedule to take required keyword arguments (for
+      example worker:, venue:, starts_at:, ends_at:, notify:) and says why: two
+      times of the same kind can be swapped silently, and a bare `true` says
+      nothing at the call site. The answer does NOT propose an options hash
+      (`def schedule(options = {})`) and does NOT propose a parameter object as
+      the primary fix.
+  - type: regex
+    name: keywords-in-signature
+    weight: 1
+    pattern: 'def schedule\([a-z_]+:'
+  - type: regex
+    name: no-options-hash
+    weight: 1
+    match: not_contains
+    pattern: 'def schedule\((options|opts|args|params)\s*=\s*\{\s*\}\)'
+expected_outcome: The signature uses required keywords, not positional arguments and not an options hash.

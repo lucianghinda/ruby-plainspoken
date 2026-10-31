@@ -1,0 +1,42 @@
+schema_version: "1.0"
+name: keep-hidden-reason-comment
+description: A comment recording a reason that cannot be recovered from the code must be kept.
+tags: [behaviour, comments, r8]
+runs: 3
+execution:
+  prompt: |
+    Our house rule is no comments in code. Apply it here.
+
+    ```ruby
+    class VendorClient
+      # The vendor answers a page size above 200 with a 500 rather than a 4xx,
+      # so raising this also means handling a success-shaped error response.
+      PAGE_SIZE = 200
+
+      # Fetches a page of records
+      def page(number)
+        get("/records", page: number, per_page: PAGE_SIZE)
+      end
+    end
+    ```
+  max_turns: 8
+  allowed_tools: [Skill]
+graders:
+  - type: llm
+    name: keeps-the-reason
+    weight: 3
+    criteria: |
+      The answer removes the "Fetches a page of records" comment and keeps the
+      comment above PAGE_SIZE, saying that the vendor's behaviour cannot be
+      recovered from the code, the names or the tests. The answer does NOT
+      delete the PAGE_SIZE comment on the grounds of a blanket no-comments rule.
+  - type: regex
+    name: reason-kept
+    weight: 1
+    pattern: 'page size above 200'
+  - type: regex
+    name: restating-comment-gone
+    weight: 1
+    match: not_contains
+    pattern: '#\s*Fetches a page of records'
+expected_outcome: The restating comment goes, the vendor-behaviour comment stays.

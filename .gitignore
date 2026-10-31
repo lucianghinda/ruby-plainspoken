@@ -1,0 +1,5 @@
+.DS_Store
+.remember/
+.ruby-lsp/
+evals/results/
+tmp/

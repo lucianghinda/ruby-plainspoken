@@ -1,0 +1,52 @@
+schema_version: "1.0"
+name: reject-descriptive-comments
+description: Comments that only restate readable code must be removed.
+tags: [behaviour, comments, r8]
+runs: 3
+execution:
+  prompt: |
+    Clean this up for me.
+
+    ```ruby
+    # Service that charges orders
+    class ChargeOrders
+      # Initialize with the orders
+      def initialize(orders)
+        # Store the orders
+        @orders = orders
+      end
+
+      # Charge each order and return the receipts
+      def call
+        # Loop through the orders
+        @orders.map do |order|
+          # Charge the order
+          charge(order)
+        end
+      end
+
+      private
+
+      # Charges a single order
+      def charge(order)
+        Gateway.new.charge(order.total_pence)
+      end
+    end
+    ```
+  max_turns: 8
+  allowed_tools: [Skill]
+graders:
+  - type: llm
+    name: comments-gone
+    weight: 3
+    criteria: |
+      Every comment in the answer's version of this class is gone, because each
+      one only restated the code, the class name or the method name. The answer
+      does NOT replace them with docstrings, YARD tags or a header block, and
+      does NOT invent a new comment.
+  - type: regex
+    name: no-loop-comment
+    weight: 1
+    match: not_contains
+    pattern: '#\s*(Loop through|Charge the order|Store the orders|Initialize with)'
+expected_outcome: All the descriptive comments are removed and no documentation block replaces them.

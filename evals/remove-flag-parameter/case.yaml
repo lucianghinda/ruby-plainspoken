@@ -1,0 +1,54 @@
+schema_version: "1.0"
+name: remove-flag-parameter
+description: A flag parameter that lets the caller decide something the method can decide itself must be removed.
+tags: [behaviour, methods, r17, guard]
+runs: 3
+execution:
+  prompt: |
+    Only one question: should the `resend:` parameter stay? These are all
+    the callers. Ignore anything else about this code.
+
+    ```ruby
+    class ReceiptMailer
+      def send_receipt(order, resend: false)
+        return if order.receipt_sent? && !resend
+
+        Mailer.receipt(order).deliver_later
+        order.update!(receipt_sent_at: Time.current)
+      end
+    end
+
+    class OrdersController < ApplicationController
+      def create
+        order = Order.create!(order_params)
+        ReceiptMailer.new.send_receipt(order, resend: false)
+        redirect_to order
+      end
+    end
+
+    class ReceiptJob < ApplicationJob
+      def perform(order)
+        ReceiptMailer.new.send_receipt(order)
+      end
+    end
+    ```
+  max_turns: 8
+  allowed_tools: [Skill]
+graders:
+  - type: llm
+    name: removes-the-flag
+    weight: 3
+    criteria: |
+      The answer removes the resend: parameter and the callers stop passing
+      it. It gives at least one of these reasons: no caller passes true, both
+      callers want the same behaviour, or the method already knows whether a
+      receipt was sent so the caller has nothing to decide. Suggesting a
+      separately named method for a future resend is acceptable. The answer
+      does NOT keep the flag, and does NOT replace it with a configuration
+      option, an enum, a mode argument or an options hash.
+  - type: regex
+    name: no-flag-in-signature
+    weight: 1
+    match: not_contains
+    pattern: 'def send_receipt\([^)]*(resend|force|mode|options)'
+expected_outcome: send_receipt takes only the order and decides by itself; callers pass no flag.

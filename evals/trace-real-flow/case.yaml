@@ -1,0 +1,46 @@
+schema_version: "1.0"
+name: trace-real-flow
+description: The fix has to be made where the shared method is, and the answer has to name the second caller in another file, which the request never mentions.
+tags: [fixture, flow, r3, r4]
+runs: 2
+context:
+  scaffold_script: ./scaffold.sh
+execution:
+  prompt: |
+    Night shifts are reporting the wrong number of hours. A shift from 22:00 to
+    06:00 (start_minute 1320, end_minute 360) comes out negative instead of 8.
+
+    test/night_shift_hours_test.rb has the failing cases. Fix it and make the
+    whole test suite pass. The run command is in README.md.
+  max_turns: 30
+  timeout_seconds: 600
+  allowed_tools: [Read, Glob, Grep, Edit, Write, Bash, Skill]
+graders:
+  - type: regex
+    name: suite-passes
+    weight: 3
+    target: trace
+    pattern: '0 failures, 0 errors'
+  - type: regex
+    name: hours-fixed-in-booking
+    weight: 2
+    target:
+      source: file
+      path: lib/booking.rb
+    pattern: 'def hours'
+  - type: llm
+    name: names-both-callers
+    weight: 2
+    criteria: |
+      The answer explains that Booking#hours is the shared method behind the
+      defect and that it is read both through the services in lib/services and
+      through Reports::WeeklySummary in lib/reports/weekly_summary.rb. It names
+      the weekly summary (or its file) even though the request never mentioned
+      it. An answer that only talks about the service the failing test calls
+      does not pass.
+  - type: file_exists
+    name: no-duplicate-hours-helper
+    weight: 1
+    path: lib/hours_calculator.rb
+    exists: false
+expected_outcome: Booking#hours is corrected once, both callers are named, and every test passes.

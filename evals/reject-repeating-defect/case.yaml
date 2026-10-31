@@ -1,0 +1,51 @@
+schema_version: "1.0"
+name: reject-repeating-defect
+description: The overlap rule is copied into three services and all three are wrong the same way. The fix has to be made once, not copied a fourth time.
+tags: [fixture, pattern, r3, r5, r6]
+runs: 2
+context:
+  scaffold_script: ./scaffold.sh
+execution:
+  prompt: |
+    A booking that starts at exactly the minute another one ends is being
+    rejected as an overlap. Two shifts back to back are legitimate.
+
+    test/touching_bookings_test.rb has the failing cases. Fix it and make the
+    whole test suite pass. The run command is in README.md.
+  max_turns: 30
+  timeout_seconds: 600
+  allowed_tools: [Read, Glob, Grep, Edit, Write, Bash, Skill]
+graders:
+  - type: regex
+    name: suite-passes
+    weight: 3
+    target: trace
+    pattern: '0 failures, 0 errors'
+  - type: regex
+    name: rule-not-left-inline-in-confirm
+    weight: 2
+    target:
+      source: file
+      path: lib/services/confirm_booking.rb
+    match: not_contains
+    pattern: 'start_minute <(=?) other\.end_minute'
+  - type: regex
+    name: rule-not-left-inline-in-create
+    weight: 2
+    target:
+      source: file
+      path: lib/services/create_booking.rb
+    match: not_contains
+    pattern: 'start_minute <(=?) other\.end_minute'
+  - type: llm
+    name: fixed-once
+    weight: 3
+    criteria: |
+      The comparison that decides whether two bookings overlap now exists in
+      exactly one place — most naturally a method on Booking — and all three
+      services ask that one place. The answer says that the rule was copied into
+      three services and that copying the pattern a fourth time would have
+      copied the defect, so the shared rule was the right place to fix it. An
+      answer that edits the same comparison separately in each of the three
+      services does not pass, even if the tests go green.
+expected_outcome: One shared overlap rule, corrected once, with all three services calling it.

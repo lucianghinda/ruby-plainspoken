@@ -1,0 +1,20 @@
+{
+  "name": "ruby-plainspoken",
+  "interface": {
+    "displayName": "Ruby Plainspoken"
+  },
+  "plugins": [
+    {
+      "name": "ruby-plainspoken",
+      "source": {
+        "source": "local",
+        "path": "./plugins/ruby-plainspoken"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "products": ["CODEX"]
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+schema_version: "1.0"
+name: remove-pass-through
+description: An object with one caller that forwards one call and decides nothing must be removed.
+tags: [behaviour, objects, r6]
+runs: 3
+execution:
+  prompt: |
+    Have a look at this and tell me what you would change.
+
+    ```ruby
+    class UserNotifier
+      def initialize(user)
+        @user = user
+      end
+
+      def notify
+        UserMailer.welcome(@user).deliver_later
+      end
+    end
+
+    class RegistrationsController < ApplicationController
+      def create
+        user = User.create!(registration_params)
+        UserNotifier.new(user).notify
+        redirect_to user
+      end
+    end
+    ```
+  max_turns: 8
+  allowed_tools: [Skill]
+graders:
+  - type: llm
+    name: removes-the-wrapper
+    weight: 3
+    criteria: |
+      The answer deletes UserNotifier and calls
+      UserMailer.welcome(user).deliver_later directly from the controller,
+      because the class has one caller, forwards one call, makes no decision of
+      its own and translates nothing. The answer does NOT keep UserNotifier, and
+      does NOT propose a different wrapper, service object, concern or
+      notification layer in its place.
+  - type: regex
+    name: mailer-called-directly
+    weight: 1
+    pattern: 'UserMailer\.welcome\(\s*user\s*\)\.deliver_later'
+expected_outcome: UserNotifier is deleted and the controller calls the mailer.

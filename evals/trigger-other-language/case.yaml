@@ -1,0 +1,24 @@
+schema_version: "1.0"
+name: trigger-other-language
+description: A refactoring request about TypeScript must not reach the skill.
+tags: [trigger, negative, r2]
+runs: 3
+execution:
+  prompt: |
+    This React component has got messy. Tidy it up.
+
+    ```tsx
+    export function InvoiceRow({ item }: { item: Item }) {
+      const amount = item.pricePence * item.quantity;
+      return <tr><td>{item.name}</td><td>{amount}</td></tr>;
+    }
+    ```
+  max_turns: 6
+  allowed_tools: [Skill]
+graders:
+  - type: tool_used
+    name: skill-did-not-fire
+    tool: Skill
+    input_match: ruby-plainspoken
+    max: 0
+expected_outcome: The agent answers without loading the Ruby Plainspoken skill.

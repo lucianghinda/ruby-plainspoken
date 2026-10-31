@@ -1,0 +1,42 @@
+schema_version: "1.0"
+name: enumerable-for-repeated-questions
+description: Four methods repeat the same filter over the same array. The collection earns an object that answers those questions once.
+tags: [fixture, returns, collections, r6, r12]
+runs: 2
+context:
+  scaffold_script: ./scaffold.sh
+execution:
+  prompt: |
+    Add one more figure to WeekReport: the number of separate night shifts in
+    the week, meaning timesheets with any night hours on them.
+
+    Then run the tests.
+  max_turns: 35
+  timeout_seconds: 600
+  allowed_tools: [Read, Glob, Grep, Edit, Write, Bash, Skill]
+graders:
+  - type: regex
+    name: suite-passes
+    weight: 3
+    target: trace
+    pattern: '0 failures, 0 errors'
+  - type: llm
+    name: stops-repeating-the-filter
+    weight: 3
+    criteria: |
+      The answer does not add a fifth copy of
+      `select { |timesheet| timesheet.night_hours.positive? }`. It names that
+      filter once — a private method, a named collection object, or a predicate
+      on Timesheet — and the new figure and the existing figures all go through
+      it. The answer says that the filter was already written four times and
+      that a fifth copy was the thing to avoid. An answer that only appends a
+      new method with the same filter copied again does not pass.
+  - type: regex
+    name: filter-named-not-recopied
+    weight: 2
+    target:
+      source: file
+      path: lib/week_report.rb
+    match: 'count:2'
+    pattern: 'night_hours\.positive\?'
+expected_outcome: The repeated filter is named once and every figure uses it.

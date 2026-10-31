@@ -1,0 +1,23 @@
+{
+  "name": "ruby-plainspoken",
+  "description": "Ruby and Rails design guidance. Reads the real code first, then picks the smallest change that fits the application: no class, wrapper, comment, type alias or dependency that has nothing to do, and no loss of validation, authorization, database integrity or tests.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Lucian Ghinda",
+    "url": "https://github.com/lucianghinda"
+  },
+  "homepage": "https://github.com/lucianghinda/ruby-plainspoken",
+  "repository": "https://github.com/lucianghinda/ruby-plainspoken",
+  "license": "MIT",
+  "keywords": [
+    "ruby",
+    "rails",
+    "simplicity",
+    "refactoring",
+    "code-review",
+    "yagni",
+    "sorbet",
+    "minitest",
+    "rspec"
+  ]
+}

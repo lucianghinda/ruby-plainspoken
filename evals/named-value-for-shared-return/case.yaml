@@ -1,0 +1,58 @@
+schema_version: "1.0"
+name: named-value-for-shared-return
+description: Three callers depend on the keys of a returned hash. On Ruby 3.4 that return becomes a Data value, and the callers move to it.
+tags: [fixture, returns, values, r10, r12]
+runs: 2
+context:
+  scaffold_script: ./scaffold.sh
+execution:
+  prompt: |
+    A typo in a hash key from QuoteCalculator got to production last month —
+    nothing failed until a payslip printed a blank line. Give the calculator's
+    result a real contract so a wrong field name fails where it is written, and
+    move the callers onto it.
+
+    Then run the tests.
+  max_turns: 35
+  timeout_seconds: 600
+  allowed_tools: [Read, Glob, Grep, Edit, Write, Bash, Skill]
+graders:
+  - type: regex
+    name: suite-passes
+    weight: 3
+    target: trace
+    pattern: '0 failures, 0 errors'
+  - type: regex
+    name: uses-data-define
+    weight: 3
+    target:
+      source: file
+      path: lib/quote_calculator.rb
+    pattern: 'Data\.define'
+  - type: regex
+    name: payslip-reads-named-fields
+    weight: 2
+    target:
+      source: file
+      path: lib/payslip.rb
+    match: not_contains
+    pattern: 'quote\[:'
+  - type: regex
+    name: export-reads-named-fields
+    weight: 2
+    target:
+      source: file
+      path: lib/payroll_export.rb
+    match: not_contains
+    pattern: 'quote\[:'
+  - type: llm
+    name: names-the-contract
+    weight: 2
+    criteria: |
+      The answer returns a single immutable named value from QuoteCalculator
+      using Data.define, with the four fields the hash carried, and updates
+      Payslip, InvoiceLine and PayrollExport to read the named readers instead
+      of hash keys. It says why a named value is right here: three callers
+      depend on the field names, so the names are the contract, and a mistyped
+      reader raises rather than returning nil. The answer does not add a gem.
+expected_outcome: QuoteCalculator returns a Data value and all three callers read its readers.

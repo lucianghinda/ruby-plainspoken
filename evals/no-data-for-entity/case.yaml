@@ -1,0 +1,50 @@
+schema_version: "1.0"
+name: no-data-for-entity
+description: Data.define must not be used for something whose identity survives while its fields change.
+tags: [behaviour, values, r10]
+runs: 3
+execution:
+  prompt: |
+    We are on Ruby 3.4. I have been told to use Data.define for value types.
+    Does this qualify? Show me what you would write.
+
+    ```ruby
+    class Booking
+      attr_reader :id, :state, :starts_at, :cancelled_at
+
+      def initialize(id:, state:, starts_at:, cancelled_at: nil)
+        @id = id
+        @state = state
+        @starts_at = starts_at
+        @cancelled_at = cancelled_at
+      end
+
+      def confirm!
+        @state = :confirmed
+      end
+
+      def cancel!(at:)
+        @state = :cancelled
+        @cancelled_at = at
+      end
+    end
+    ```
+  max_turns: 8
+  allowed_tools: [Skill]
+graders:
+  - type: llm
+    name: rejects-data-for-entity
+    weight: 3
+    criteria: |
+      The answer says Booking is not a value type and must not become a
+      Data.define, because it has an identity (id) that survives while state
+      and cancelled_at change. It keeps a normal object that owns its own state.
+      The answer does NOT convert Booking to Data.define, and does NOT suggest
+      returning a new Data instance from confirm! and cancel! as the main
+      recommendation for this class.
+  - type: regex
+    name: no-data-define
+    weight: 1
+    match: not_contains
+    pattern: 'Booking = Data\.define'
+expected_outcome: Booking stays a normal object because it is an entity, not a value.

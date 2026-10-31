@@ -1,0 +1,61 @@
+schema_version: "1.0"
+name: merge-temporal-split
+description: Objects split only by the step they run in, that all know the same format, must not survive as three classes.
+tags: [behaviour, objects, r16, guard]
+runs: 3
+execution:
+  prompt: |
+    Three classes for one CSV import. Should they stay separate? Answer for
+    the code as given.
+
+    ```ruby
+    class OrderImporter
+      def rows(path)
+        CSV.read(path, headers: true).map do |row|
+          { sku: row[0], quantity: row[1].to_i, ordered_on: Date.strptime(row[2], "%d/%m/%Y") }
+        end
+      end
+    end
+
+    class OrderRowValidator
+      def valid?(row)
+        row[:sku].present? && row[:quantity].positive? && row[:ordered_on] <= Date.current
+      end
+    end
+
+    class OrderRowSaver
+      def save(row)
+        Order.create!(sku: row[:sku], quantity: row[:quantity], ordered_on: row[:ordered_on])
+      end
+    end
+
+    class ImportsController < ApplicationController
+      def create
+        rows = OrderImporter.new.rows(params[:file].path)
+        valid = rows.select { |row| OrderRowValidator.new.valid?(row) }
+        valid.each { |row| OrderRowSaver.new.save(row) }
+        redirect_to orders_path
+      end
+    end
+    ```
+  max_turns: 8
+  allowed_tools: [Skill]
+graders:
+  - type: llm
+    name: merges-by-knowledge
+    weight: 3
+    criteria: |
+      The answer says no, and says why: all three classes know the same row
+      format (the column positions and the field names) and are split only by
+      the step in which they run. The result has the row format in one place
+      and fewer than three classes. One object that reads, checks and creates
+      is a pass; one CSV object with the checks moved to Order model
+      validations is also a pass. The answer does NOT keep all three classes,
+      and does NOT add a coordinator, pipeline or service object to chain
+      them.
+  - type: regex
+    name: no-pipeline-object
+    weight: 1
+    match: not_contains
+    pattern: 'class\s+\w*(Pipeline|Coordinator|Runner|Workflow|Orchestrator)\b'
+expected_outcome: The three step classes do not survive; the row format lives in one place.

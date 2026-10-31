@@ -1,0 +1,77 @@
+schema_version: "1.0"
+name: define-error-away
+description: Repeated rescues around an operation that can simply succeed should be removed by making the odd cases a normal result.
+tags: [behaviour, errors, r18, guard]
+runs: 3
+execution:
+  prompt: |
+    The same rescues are in three controllers. A teammate proposes a
+    `CancelSubscription` service that returns a Result object so each
+    controller can branch on it. Is that the right fix?
+
+    ```ruby
+    class Subscription < ApplicationRecord
+      AlreadyCancelled = Class.new(StandardError)
+
+      def cancel!
+        raise AlreadyCancelled if cancelled?
+
+        update!(cancelled_at: Time.current)
+      end
+    end
+
+    class SubscriptionsController < ApplicationController
+      def destroy
+        Subscription.find(params[:id]).cancel!
+        redirect_to subscriptions_path, notice: "Cancelled"
+      rescue ActiveRecord::RecordNotFound
+        redirect_to subscriptions_path, alert: "No such subscription"
+      rescue Subscription::AlreadyCancelled
+        redirect_to subscriptions_path, notice: "Cancelled"
+      end
+    end
+
+    class Admin::SubscriptionsController < Admin::BaseController
+      def cancel
+        Subscription.find(params[:id]).cancel!
+        redirect_to admin_subscriptions_path, notice: "Cancelled"
+      rescue ActiveRecord::RecordNotFound
+        redirect_to admin_subscriptions_path, alert: "No such subscription"
+      rescue Subscription::AlreadyCancelled
+        redirect_to admin_subscriptions_path, notice: "Cancelled"
+      end
+    end
+
+    class Api::SubscriptionsController < Api::BaseController
+      def destroy
+        Subscription.find(params[:id]).cancel!
+        head :no_content
+      rescue ActiveRecord::RecordNotFound
+        head :not_found
+      rescue Subscription::AlreadyCancelled
+        head :no_content
+      end
+    end
+    ```
+  max_turns: 8
+  allowed_tools: [Skill]
+graders:
+  - type: llm
+    name: defines-the-error-away
+    weight: 3
+    criteria: |
+      The answer rejects the service and Result object. It makes cancelling
+      an already cancelled subscription a normal result: cancel! does nothing
+      when already cancelled and the AlreadyCancelled error is deleted, so
+      those three rescues go. For the missing record it either uses one
+      rescue_from per base controller, Rails' own 404 handling, or keeps a
+      single RecordNotFound rescue in the HTML controllers because their
+      redirects differ; any of these passes. The answer does NOT add a service
+      object, a Result class or a new error-handling layer, and does NOT keep
+      the per-action rescue pairs.
+  - type: regex
+    name: no-new-error-layer
+    weight: 1
+    match: not_contains
+    pattern: 'class\s+\w*(ErrorHandler|CancellationService|CancelSubscription|Result)\b'
+expected_outcome: Cancel becomes a no-op when repeated, the error class goes, and the missing record is handled once.

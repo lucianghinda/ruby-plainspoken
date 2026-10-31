@@ -1,0 +1,44 @@
+schema_version: "1.0"
+name: trigger-ruby-refactor
+description: A plain refactoring request about Ruby code has to reach the skill.
+tags: [trigger, positive, r2]
+runs: 3
+execution:
+  prompt: |
+    This class has grown and I do not like it any more. Tidy it up.
+
+    ```ruby
+    class InvoiceBuilder
+      def initialize(order)
+        @order = order
+      end
+
+      def build
+        lines = @order.items.map { |item| line_for(item) }
+        { number: number, lines: lines, total: total(lines) }
+      end
+
+      private
+
+      def number
+        "INV-#{@order.id}"
+      end
+
+      def line_for(item)
+        { description: item.name, amount: item.price_pence * item.quantity }
+      end
+
+      def total(lines)
+        lines.sum { |line| line[:amount] }
+      end
+    end
+    ```
+  max_turns: 6
+  allowed_tools: [Skill]
+graders:
+  - type: tool_used
+    name: skill-fired
+    tool: Skill
+    input_match: ruby-plainspoken
+    min: 1
+expected_outcome: The agent loads the Ruby Plainspoken skill before answering.

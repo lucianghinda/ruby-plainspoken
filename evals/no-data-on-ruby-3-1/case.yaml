@@ -1,0 +1,49 @@
+schema_version: "1.0"
+name: no-data-on-ruby-3-1
+description: The same change on Ruby 3.1, where Data.define does not exist and the project already has a keyword Struct for values.
+tags: [fixture, returns, values, r4, r10]
+runs: 2
+context:
+  scaffold_script: ./scaffold.sh
+execution:
+  prompt: |
+    A typo in a hash key from QuoteCalculator got to production last month —
+    nothing failed until a payslip printed a blank line. Give the calculator's
+    result a real contract so a wrong field name fails where it is written, and
+    move the callers onto it.
+
+    Then run the tests.
+  max_turns: 35
+  timeout_seconds: 600
+  allowed_tools: [Read, Glob, Grep, Edit, Write, Bash, Skill]
+graders:
+  - type: regex
+    name: no-data-define
+    weight: 3
+    target:
+      source: file
+      path: lib/quote_calculator.rb
+    match: not_contains
+    pattern: 'Data\.define'
+  - type: regex
+    name: uses-the-projects-value-shape
+    weight: 3
+    target:
+      source: file
+      path: lib/quote_calculator.rb
+    pattern: 'Struct\.new'
+  - type: file_exists
+    name: no-gemfile-added
+    weight: 2
+    path: Gemfile
+    exists: false
+  - type: llm
+    name: checked-the-ruby-version
+    weight: 3
+    criteria: |
+      The answer says it checked the Ruby version, found 3.1.4 in
+      .ruby-version, and therefore did not use Data.define because it does not
+      exist before Ruby 3.2. It uses the value shape the project already has —
+      Struct.new(..., keyword_init: true), as in lib/tax_band.rb — and does not
+      add a gem or a shim to backport Data.
+expected_outcome: A keyword Struct matching the project's existing value shape, no Data.define, no new dependency.

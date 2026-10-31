@@ -1,0 +1,45 @@
+schema_version: "1.0"
+name: keep-local-hash
+description: A multi-field result consumed immediately by its one caller stays a plain hash.
+tags: [behaviour, returns, r12]
+runs: 3
+execution:
+  prompt: |
+    We are on Ruby 3.4. Someone said any method returning a hash should return
+    a value object instead. What would you do here?
+
+    ```ruby
+    class ImportReport
+      def initialize(rows)
+        @rows = rows
+      end
+
+      def render
+        counts = tally
+        "#{counts[:imported]} imported, #{counts[:skipped]} skipped"
+      end
+
+      private
+
+      def tally
+        { imported: @rows.count(&:imported?), skipped: @rows.count(&:skipped?) }
+      end
+    end
+    ```
+  max_turns: 8
+  allowed_tools: [Skill]
+graders:
+  - type: llm
+    name: keeps-the-hash
+    weight: 3
+    criteria: |
+      The answer keeps the plain hash and says why: `tally` is private, its one
+      caller reads it on the next line, and the field meaning is obvious there,
+      so a named value object would add a concept that lives for two lines.
+      The answer does NOT introduce Data.define, Struct, or a new class here.
+  - type: regex
+    name: no-value-object
+    weight: 1
+    match: not_contains
+    pattern: '(Data\.define|Struct\.new)'
+expected_outcome: The hash stays; no value object is introduced.

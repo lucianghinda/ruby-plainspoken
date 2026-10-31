@@ -1,0 +1,64 @@
+schema_version: "1.0"
+name: keep-raise-on-money
+description: A raise that stops an order being created without payment must stay, and be handled in one place, when silent success would lose money.
+tags: [behaviour, errors, r18, guard]
+runs: 3
+execution:
+  prompt: |
+    Our lint rule says "no exceptions for control flow". A teammate wants
+    `charge!` to return a boolean and the controller to branch on it. Review
+    the proposal.
+
+    ```ruby
+    class Payment < ApplicationRecord
+      PaymentDeclined = Class.new(StandardError)
+
+      def charge!
+        result = Gateway.charge(token: token, amount_cents: amount_cents)
+        raise PaymentDeclined, result.reason if result.declined?
+
+        update!(charged_at: Time.current)
+      end
+    end
+
+    class OrdersController < ApplicationController
+      def create
+        payment = Payment.create!(payment_params)
+        payment.charge!
+        order = Order.create!(order_params.merge(payment: payment))
+        redirect_to order
+      rescue Payment::PaymentDeclined => e
+        redirect_to new_order_path, alert: e.message
+      end
+    end
+
+    class RetryChargeJob < ApplicationJob
+      def perform(payment)
+        payment.charge!
+      end
+    end
+    ```
+  max_turns: 8
+  allowed_tools: [Skill]
+graders:
+  - type: llm
+    name: keeps-the-raise
+    weight: 3
+    criteria: |
+      The answer rejects the proposal and keeps a raise on a declined charge
+      (charge! may keep its name, or a non-raising charge may be added beside
+      it, as long as the path the controller uses still stops). It says why: a
+      false or nil return lets a caller forget the check and create an order
+      that was never paid, and the job would mark a retry as done. It handles
+      the error in one place, for example the existing controller rescue or a
+      rescue_from, rather than a check at every caller. A non-raising charge
+      beside charge!, even with a controller example that stops on false, is
+      acceptable as long as the answer recommends keeping charge! raising. The
+      answer does NOT make charge! itself return false or nil, and does NOT
+      let an order be created after a decline.
+  - type: regex
+    name: no-boolean-charge
+    weight: 1
+    match: not_contains
+    pattern: 'def charge!\b[\s\S]{0,400}?\breturn (false|nil)\b'
+expected_outcome: The raise stays, so a declined card cannot produce an unpaid order.

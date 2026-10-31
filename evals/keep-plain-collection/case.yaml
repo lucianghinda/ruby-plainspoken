@@ -1,0 +1,46 @@
+schema_version: "1.0"
+name: keep-plain-collection
+description: A collection the caller iterates once and asks nothing of stays an array or a relation.
+tags: [behaviour, returns, r12, rails]
+runs: 3
+execution:
+  prompt: |
+    In our Rails app someone suggested every method that returns a collection
+    should return a collection object instead of an array or a relation. What
+    would you do here?
+
+    ```ruby
+    class VenueDashboard
+      def initialize(venue)
+        @venue = venue
+      end
+
+      def upcoming_shifts
+        @venue.shifts.upcoming.order(:starts_at)
+      end
+    end
+
+    # the only caller
+    # <% dashboard.upcoming_shifts.each do |shift| %>
+    #   <%= render shift %>
+    # <% end %>
+    ```
+  max_turns: 8
+  allowed_tools: [Skill]
+graders:
+  - type: llm
+    name: keeps-the-relation
+    weight: 3
+    criteria: |
+      The answer keeps the Active Record relation as the return value and says
+      why: the one caller iterates it once and asks it no questions, and
+      wrapping a relation costs the caller the ability to chain a scope, page it
+      or count it in the database, and usually loads every row into Ruby. The
+      answer does NOT introduce a collection class, an Enumerable wrapper, or
+      call `.to_a` on the relation.
+  - type: regex
+    name: no-collection-wrapper
+    weight: 1
+    match: not_contains
+    pattern: 'include Enumerable'
+expected_outcome: The relation is returned unchanged; no collection wrapper appears.
