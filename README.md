@@ -33,15 +33,21 @@ codex plugin add ruby-plainspoken@ruby-plainspoken
 
 After publication, you can add the marketplace from
 `lucianghinda/ruby-plainspoken` in Claude Code or
-`https://github.com/lucianghinda/ruby-plainspoken` in Codex.
+`https://github.com/lucianghinda/ruby-plainspoken.git` in Codex.
 
 ```sh
 claude plugin marketplace add lucianghinda/ruby-plainspoken
 claude plugin install ruby-plainspoken@ruby-plainspoken
 
-codex plugin marketplace add https://github.com/lucianghinda/ruby-plainspoken
+codex plugin marketplace add https://github.com/lucianghinda/ruby-plainspoken.git
 codex plugin add ruby-plainspoken@ruby-plainspoken
 ```
+
+The plugin lives at the repository root. Claude's marketplace source is `./`;
+Codex's source is `./plugins/ruby-plainspoken`, a symlink to that same root.
+The shared skill is `skills/ruby-plainspoken/SKILL.md`, and the Codex plugin
+manifest loads it through `"skills": "./skills/"`. These paths are relative to
+the cloned repository, so they do not need the GitHub URL prepended.
 
 Both agents use the same [skill](skills/ruby-plainspoken/SKILL.md). It loads
 automatically for Ruby and Rails work; in Claude Code, you can also invoke it

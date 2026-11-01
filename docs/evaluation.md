@@ -160,8 +160,9 @@ Before publishing:
 
 - Complete the calibration and final evaluation runs described above. Existing
   local single-case reports do not establish a full release pass.
-- Create the GitHub repository named in the manifests and configure its Git
-  remote. Push `main` only; any local history backup branch is for recovery.
+- Confirm `origin` points to
+  `https://github.com/lucianghinda/ruby-plainspoken.git`. Push `main` only;
+  any local history backup branch is for recovery.
 - If submitting to the Claude plugin directory, supply a square PNG or JPEG
   icon before the first submission. The local validator currently warns that
   no icon is present. Validate a clean checkout to avoid ignored macOS files.
