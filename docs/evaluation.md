@@ -62,6 +62,13 @@ The Codex reports go through the same release rule, and their reasons start
 with `codex:`. Codex does not report a cost, so the summary says "cost not
 reported". The judge cost is in the report file as `judgeCostUsd`.
 
+OpenCode is not part of `bin/evaluate`: there are no live OpenCode model runs,
+with-plugin or baseline. Its integration is checked separately by
+`test/opencode_plugin_test.rb`, which exercises plugin registration with a
+fake OpenCode 2.x skill editor. Passing that check establishes registration
+behavior only; it does not establish live OpenCode discovery, skill triggering,
+or a model quality gain.
+
 The release result follows one rule, and `bin/evaluate` exits on it:
 
 | Result | Exit | When |
@@ -110,7 +117,8 @@ Each case names the requirement it serves in its tags, and
 
 | Requirement | Cases |
 |---|---|
-| Install and update on both agents, with no application gem | `test/install_smoke_test.rb` |
+| Install and update on Claude Code and Codex, with no application gem | `test/install_smoke_test.rb` |
+| Register the shared skill as an OpenCode 2.x plugin | `test/opencode_plugin_test.rb` |
 | The skill fires on Ruby and Rails work and not on anything else | `trigger-ruby-refactor`, `trigger-rails-implement`, `trigger-ruby-review`, `trigger-other-language`, `trigger-non-coding` |
 | Read the flow before designing | `trace-real-flow`, `follow-service-pattern`, `reject-repeating-defect` |
 | Stop at the first thing that already covers the request | `trace-real-flow`, `no-data-on-ruby-3-1`, `rails-facility-over-new-layer` |
@@ -169,7 +177,9 @@ Before publishing:
 - Once the evaluation gate passes, run `claude plugin tag .` and push the
   generated `ruby-plainspoken--v0.1.0` tag alongside `main`.
 - Test both GitHub installation commands in the README from fresh agent
-  configurations, then update the README's unpublished notice.
+  configurations. Verify the OpenCode 2.x package entry against a real OpenCode
+  installation before claiming OpenCode runtime validation, then update the
+  README's unpublished notice.
 
 Do not treat local installation tests or a dry run as a completed model
 evaluation. No release tag is created during preparation.

@@ -1,0 +1,9 @@
+{
+  "name": "ruby-plainspoken",
+  "version": "0.1.0",
+  "description": "Ruby and Rails design guidance for coding agents",
+  "license": "MIT",
+  "type": "module",
+  "main": ".opencode/plugins/ruby-plainspoken.js",
+  "files": [".opencode/plugins/", "skills/", "README.md", "LICENSE"]
+}

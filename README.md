@@ -4,10 +4,10 @@ When you ask a coding agent to change a Ruby or Rails application, it can add
 layers that make the code harder to follow: a service object for one call, a
 wrapper around a Rails feature, or a method that only renames an expression.
 
-Ruby Plainspoken is a plugin for Claude Code and Codex that helps your agent
-make the smallest change that fits your application. It reads the existing
-code and tests first, then looks for a solution in your application, Ruby, Rails,
-or the gems you already use.
+Ruby Plainspoken is a plugin for Claude Code, Codex, and OpenCode 2.x that helps
+your agent make the smallest change that fits your application. It reads the
+existing code and tests first, then looks for a solution in your application,
+Ruby, Rails, or the gems you already use.
 
 The goal is fewer concepts, not fewer objects. An object that owns a real
 responsibility or boundary has a place. Simplicity should also preserve your
@@ -31,6 +31,22 @@ codex plugin marketplace add /path/to/ruby-plainspoken
 codex plugin add ruby-plainspoken@ruby-plainspoken
 ```
 
+### OpenCode 2.x
+
+Add the GitHub plugin entry to your OpenCode configuration (`opencode.json`):
+
+```json
+{
+  "plugins": [
+    "ruby-plainspoken@git+https://github.com/lucianghinda/ruby-plainspoken.git"
+  ]
+}
+```
+
+Restart OpenCode. The plugin registers the shared `ruby-plainspoken` skill.
+This integration supports OpenCode 2.x only; see the
+[OpenCode install notes](.opencode/INSTALL.md).
+
 After publication, you can add the marketplace from
 `lucianghinda/ruby-plainspoken` in Claude Code or
 `https://github.com/lucianghinda/ruby-plainspoken.git` in Codex.
@@ -49,7 +65,7 @@ The shared skill is `skills/ruby-plainspoken/SKILL.md`, and the Codex plugin
 manifest loads it through `"skills": "./skills/"`. These paths are relative to
 the cloned repository, so they do not need the GitHub URL prepended.
 
-Both agents use the same [skill](skills/ruby-plainspoken/SKILL.md). It loads
+All three agents use the same [skill](skills/ruby-plainspoken/SKILL.md). It loads
 automatically for Ruby and Rails work; in Claude Code, you can also invoke it
 with `/ruby-plainspoken:ruby-plainspoken`. You do not need to add a gem to your
 application.
@@ -70,8 +86,9 @@ examples and exceptions.
 
 ## Development
 
-Ruby 3.2 or newer is required. The project uses the standard library and does
-not need Bundler.
+Ruby 3.2 or newer is required. Ruby tests use the standard library and do
+not need Bundler. The OpenCode registration test also requires Node.js to
+load the JavaScript plugin; no npm dependencies are needed.
 
 Run the tests:
 
