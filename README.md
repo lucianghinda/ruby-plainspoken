@@ -72,12 +72,18 @@ application.
 
 ## What the skill does
 
-- Traces the relevant code and reads the tests before choosing a design.
-- Uses existing application patterns and Rails features when they fit.
-- Keeps names and objects that explain a domain rule or own a responsibility.
-- Avoids layers, comments, and abstractions that only repeat what the code says.
-- Preserves required safety checks and adds a focused test using the project's
-  existing test framework.
+- Read the code, callers, and tests before choosing a design.
+- Reuse the application, Ruby, Rails, and existing gems before writing new code.
+- Follow the application's patterns unless they cause the problem being fixed.
+- Add an object when it owns a clear responsibility or boundary.
+- Return the simplest value or collection that callers need.
+- Use clear method arguments and avoid unnecessary flags and wrappers.
+- Keep names that explain domain rules; inline methods that only repeat code.
+- Comment on hidden reasons, constraints, and workarounds.
+- Treat normal outcomes as normal; handle real errors where they belong.
+- Use Rails facilities when they fit, and plain objects for separate work.
+- Preserve validation, authorization, data integrity, security, accessibility, and tests.
+- Add a focused test for new logic using the project's existing test framework.
 
 Your instructions and the repository's instructions take precedence over the
 skill. It complements your tests, linters, security tools, and code review.
